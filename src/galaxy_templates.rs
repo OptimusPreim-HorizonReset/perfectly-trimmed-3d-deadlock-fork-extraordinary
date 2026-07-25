@@ -14,6 +14,8 @@ pub struct GalaxyTemplate {
     pub central_mass: f32,
     /// Per-particle mass range `(min, max)` sampled uniformly at random.
     pub particle_mass_range: (f32, f32),
+    /// Global multiplier applied to all initial particle spin speeds.
+    pub spin_speed_multiplier: f32,
     /// Probability (0–1) that one new accretion particle is spawned near a
     /// detected galaxy center on any given simulation step.
     pub accretion_spawn_rate: f32,
@@ -35,6 +37,7 @@ impl GalaxyTemplate {
             outer_radius,
             central_mass: 1e6,
             particle_mass_range: (0.5, 2.0),
+            spin_speed_multiplier: 1.0,
             accretion_spawn_rate: 0.1,
             outer_ring_spawn_zone_inner_radius: spawn_inner,
             outer_ring_spawn_zone_outer_radius: outer_radius,
@@ -53,6 +56,7 @@ impl GalaxyTemplate {
             outer_radius,
             central_mass: 5e5,
             particle_mass_range: (1.0, 3.0),
+            spin_speed_multiplier: 1.0,
             accretion_spawn_rate: 0.1,
             outer_ring_spawn_zone_inner_radius: spawn_inner,
             outer_ring_spawn_zone_outer_radius: outer_radius,
@@ -71,6 +75,7 @@ impl GalaxyTemplate {
             outer_radius,
             central_mass: config.central_mass,
             particle_mass_range: config.particle_mass_range,
+            spin_speed_multiplier: config.spin_speed_multiplier,
             accretion_spawn_rate: config.accretion_spawn_rate,
             outer_ring_spawn_zone_inner_radius,
             outer_ring_spawn_zone_outer_radius,
@@ -92,7 +97,7 @@ impl GalaxyTemplate {
             velocity,
             self.central_mass,
             self.inner_radius,
-            0.35,
+            0.35 * self.spin_speed_multiplier,
             Vec3::new(0.0, 0.0, 1.0),
         ));
 
@@ -105,7 +110,9 @@ impl GalaxyTemplate {
             let (sin, cos) = a.sin_cos();
             let t = self.inner_radius / self.outer_radius;
             let r = fastrand::f32() * (1.0 - t * t) + t * t;
-            let offset = Vec3::new(cos, sin, 0.0) * self.outer_radius * r.sqrt();
+            let thickness = self.outer_radius * 0.01;
+            let z = (fastrand::f32() - 0.5) * thickness;
+            let offset = Vec3::new(cos, sin, 0.0) * self.outer_radius * r.sqrt() + Vec3::new(0.0, 0.0, z);
             // Unit tangent for a clockwise orbit.
             let tangent = Vec3::new(sin, -cos, 0.0);
             let mass = mass_min + fastrand::f32() * (mass_max - mass_min);
@@ -115,7 +122,7 @@ impl GalaxyTemplate {
                 tangent,
                 mass,
                 radius,
-                0.4 + fastrand::f32() * 0.5,
+                (0.4 + fastrand::f32() * 0.5) * self.spin_speed_multiplier,
                 Vec3::new(0.0, 0.0, 1.0),
             ));
         }
@@ -138,7 +145,7 @@ impl GalaxyTemplate {
             let orbital_speed = (enclosed_mass / offset.xy().mag()).sqrt();
             // body.vel currently holds the unit tangent direction assigned above.
             body.vel = velocity + body.vel * orbital_speed;
-            body.angular_speed += orbital_speed * 0.025;
+            body.angular_speed += orbital_speed * 0.025 * self.spin_speed_multiplier;
         }
 
         bodies
@@ -168,7 +175,7 @@ impl GalaxyTemplate {
             velocity,
             self.central_mass,
             self.inner_radius,
-            if clockwise { 0.35 } else { -0.35 },
+            if clockwise { 0.35 } else { -0.35 } * self.spin_speed_multiplier,
             rotation_axis,
         ));
 
@@ -179,7 +186,9 @@ impl GalaxyTemplate {
             let (sin, cos) = a.sin_cos();
             let t = self.inner_radius / self.outer_radius;
             let r = fastrand::f32() * (1.0 - t * t) + t * t;
-            let offset = (u * cos + v * sin) * self.outer_radius * r.sqrt();
+            let thickness = self.outer_radius * 0.01;
+            let depth = (fastrand::f32() - 0.5) * thickness;
+            let offset = (u * cos + v * sin) * self.outer_radius * r.sqrt() + rotation_axis * depth;
             let tangent_dir = if clockwise {
                 -rotation_axis.cross(offset).normalized()
             } else {
@@ -192,7 +201,7 @@ impl GalaxyTemplate {
                 tangent_dir,
                 mass,
                 radius,
-                0.4 + fastrand::f32() * 0.5,
+                (0.4 + fastrand::f32() * 0.5) * self.spin_speed_multiplier,
                 rotation_axis,
             ));
         }
@@ -212,7 +221,7 @@ impl GalaxyTemplate {
             }
             let orbital_speed = (enclosed_mass / offset.mag()).sqrt();
             body.vel = velocity + body.vel * orbital_speed;
-            body.angular_speed += orbital_speed * 0.025 * if clockwise { 1.0 } else { -1.0 };
+            body.angular_speed += orbital_speed * 0.025 * if clockwise { 1.0 } else { -1.0 } * self.spin_speed_multiplier;
         }
 
         bodies

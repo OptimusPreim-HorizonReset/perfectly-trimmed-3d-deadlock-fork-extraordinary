@@ -21,6 +21,10 @@ pub struct Simulation {
     center1_idx: usize,
     /// Index of second galaxy center
     center2_idx: usize,
+    /// Resulting equatorial plane normal for hydrodynamic inflow alignment.
+    equatorial_plane_normal: Vec3,
+    /// Position through which the equatorial plane passes.
+    equatorial_plane_center: Vec3,
 }
 
 impl Simulation {
@@ -70,6 +74,8 @@ impl Simulation {
             config,
             center1_idx: 0,
             center2_idx,
+            equatorial_plane_normal: Vec3::new(0.0, 0.0, 1.0),
+            equatorial_plane_center: Vec3::zero(),
         }
     }
 
@@ -136,7 +142,9 @@ impl Simulation {
     pub fn step(&mut self) {
         self.iterate();
         if self.frame % self.config.collision_interval == 0 {
-            self.collide();
+            if renderer::COLLISIONS_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+                self.collide();
+            }
         }
         if self.frame % self.config.attract_interval == 0 {
             self.attract();
@@ -173,17 +181,23 @@ impl Simulation {
         let outer_r = self.accretion_template.outer_radius.max(1.0);
         let inflow_strength = self.config.inflow_strength;
         let restore_strength = self.config.restore_strength;
+        let plane_center = self.equatorial_plane_center;
+        let plane_normal = self.equatorial_plane_normal;
 
         self.bodies.par_iter_mut().for_each(|body| {
-            let y = body.pos.y;
-            let z = body.pos.z;
-            let lateral = if y.abs() > 0.0 {
-                -y.signum() * inflow_strength * (1.0 - (y.abs() / outer_r).clamp(0.0, 1.0))
+            let offset = body.pos - plane_center;
+            let dist_to_plane = offset.dot(plane_normal);
+            let in_plane_pos = offset - plane_normal * dist_to_plane;
+            let in_plane_dist = in_plane_pos.mag();
+
+            let plane_attraction = -plane_normal * dist_to_plane * restore_strength / outer_r;
+            let radial_inflow = if in_plane_dist > 0.0 {
+                -in_plane_pos / in_plane_dist * inflow_strength * (1.0 - (in_plane_dist / outer_r).clamp(0.0, 1.0))
             } else {
-                0.0
+                Vec3::zero()
             };
-            let vertical = -z * restore_strength / outer_r;
-            body.acc += ultraviolet::Vec3::new(0.0, lateral, vertical);
+
+            body.acc += plane_attraction + radial_inflow;
         });
     }
 
@@ -250,6 +264,8 @@ impl Simulation {
         if self.bodies.len() < 2 {
             return;
         }
+
+        let mut center_merge_pair: Option<(usize, usize)> = None;
 
         let max_radius = self
             .bodies
@@ -338,7 +354,7 @@ impl Simulation {
                                         if neighbor_idx == cell_idx && i >= j {
                                             continue;
                                         }
-                                        self.resolve(i, j);
+                                        self.resolve(i, j, &mut center_merge_pair);
                                     }
                                 }
                             }
@@ -346,6 +362,10 @@ impl Simulation {
                     }
                 }
             }
+        }
+
+        if let Some((i, j)) = center_merge_pair {
+            self.merge_center_particles(i, j);
         }
     }
 
@@ -393,9 +413,9 @@ impl Simulation {
         let orbital_speed = (acc.mag() * r).sqrt();
         let vel = tangent * orbital_speed;
 
-        let angular_speed = self.config.spawn_angular_speed_base 
+        let angular_speed = (self.config.spawn_angular_speed_base 
             + fastrand::f32() * self.config.spawn_angular_speed_range 
-            + orbital_speed * 0.02;
+            + orbital_speed * 0.02) * self.config.spin_speed_multiplier;
         self.bodies.push(Body::new(
             spawn_pos,
             vel,
@@ -406,7 +426,12 @@ impl Simulation {
         ));
     }
 
-    fn resolve(&mut self, i: usize, j: usize) {
+    fn resolve(&mut self, i: usize, j: usize, center_merge_pair: &mut Option<(usize, usize)>) {
+        if (i == self.center1_idx && j == self.center2_idx) || (i == self.center2_idx && j == self.center1_idx) {
+            *center_merge_pair = Some((i, j));
+            return;
+        }
+
         let b1 = &self.bodies[i];
         let b2 = &self.bodies[j];
 
@@ -467,4 +492,49 @@ impl Simulation {
         self.bodies[i].pos += v1 * t;
         self.bodies[j].pos += v2 * t;
     }
+
+    fn merge_center_particles(&mut self, i: usize, j: usize) {
+        let mut first = i;
+        let mut second = j;
+        if first > second {
+            std::mem::swap(&mut first, &mut second);
+        }
+
+        let b1 = self.bodies[first];
+        let b2 = self.bodies[second];
+        let total_mass = b1.mass + b2.mass;
+        let merged_pos = (b1.pos * b1.mass + b2.pos * b2.mass) / total_mass;
+        let merged_vel = (b1.vel * b1.mass + b2.vel * b2.mass) / total_mass;
+
+        let orbital_axis = (b2.pos - b1.pos).cross(b2.vel - b1.vel);
+        let axis = if orbital_axis.mag_sq() > 1e-8 {
+            orbital_axis.normalized()
+        } else {
+            let axis_sum = b1.rotation_axis * b1.mass + b2.rotation_axis * b2.mass;
+            if axis_sum.mag_sq() > 1e-8 {
+                axis_sum.normalized()
+            } else {
+                Vec3::new(0.0, 0.0, 1.0)
+            }
+        };
+
+        let merged_radius = (b1.base_radius.powi(3) + b2.base_radius.powi(3)).cbrt();
+        let merged_angular_speed = (b1.angular_speed.abs() * b1.mass + b2.angular_speed.abs() * b2.mass) / total_mass;
+        self.bodies[first] = Body::new(merged_pos, merged_vel, total_mass, merged_radius, merged_angular_speed, axis);
+        self.bodies.remove(second);
+
+        self.center1_idx = first;
+        self.center2_idx = usize::MAX;
+        self.equatorial_plane_normal = axis;
+        self.equatorial_plane_center = merged_pos;
+
+        eprintln!(
+            "🔗 Center merge: mass={} pos={:?} axis={:?} inflow-plane-normal={:?}",
+            total_mass,
+            merged_pos,
+            axis,
+            self.equatorial_plane_normal
+        );
+    }
 }
+

@@ -20,6 +20,7 @@ pub static PAUSED: Lazy<AtomicBool> = Lazy::new(|| false.into());
 pub static UPDATE_LOCK: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 
 pub static SPAWN_ENABLED: Lazy<AtomicBool> = Lazy::new(|| true.into());
+pub static COLLISIONS_ENABLED: Lazy<AtomicBool> = Lazy::new(|| true.into());
 pub static RESET_REQUESTED: Lazy<AtomicBool> = Lazy::new(|| false.into());
 
 pub static BODIES: Lazy<Mutex<Vec<Body>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -89,6 +90,10 @@ impl quarkstrom::Renderer for Renderer {
         if input.key_pressed(VirtualKeyCode::X) {
             let enabled = SPAWN_ENABLED.load(Ordering::Relaxed);
             SPAWN_ENABLED.store(!enabled, Ordering::Relaxed);
+        }
+        if input.key_pressed(VirtualKeyCode::Y) {
+            let enabled = COLLISIONS_ENABLED.load(Ordering::Relaxed);
+            COLLISIONS_ENABLED.store(!enabled, Ordering::Relaxed);
         }
         if input.key_pressed(VirtualKeyCode::R) {
             RESET_REQUESTED.store(true, Ordering::Relaxed);
@@ -255,6 +260,8 @@ impl quarkstrom::Renderer for Renderer {
                 ui.checkbox(&mut self.show_quadtree, "Show Quadtree");
                 ui.label(format!("Particle spawn: {}", if SPAWN_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
                 ui.label("Toggle with X");
+                ui.label(format!("Collisions: {}", if COLLISIONS_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label("Toggle with Y");
                 ui.label("Reset with R");
                 if self.show_quadtree {
                     let range = &mut self.depth_range;

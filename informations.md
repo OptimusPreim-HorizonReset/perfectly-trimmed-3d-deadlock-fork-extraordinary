@@ -10,10 +10,10 @@ Diese Datei listet die wichtigsten konfigurierbaren Eigenschaften und Parameter 
 # epsilon: Gravitational Softening für numerische Stabilität
 # n: Anzahl der Disk-Partikel pro Galaxie (ohne Zentralmasse)
 
-dt: 0.02
+dt: 0.1
 theta: 1.0
 epsilon: 1.1
-n: 20000
+n: 50000
 
 # === GALAXY STRUCTURE ===
 # inner_radius: Radius der zentralen Masse / des Bulge
@@ -21,10 +21,10 @@ n: 20000
 # central_mass: Masse des zentralen schwarzen Lochs / Galaxiezentrums
 # particle_mass_range: Min/Max Masse der Disk-Partikel (Format: min, max)
 
-inner_radius: 25.0
-outer_radius: 218.03
-central_mass: 1000000.0
-particle_mass_range: 0.5, 2.0
+inner_radius: 15.0
+outer_radius: 1000.03
+central_mass: 100000.0
+particle_mass_range: 0.005, 0.01
 
 # === SPAWN ZONE CONFIGURATION ===
 # outer_ring_spawn_zone_inner_ratio: Innerer Radius der Spawn-Zone (als Verhältnis zu outer_radius)
@@ -33,7 +33,7 @@ particle_mass_range: 0.5, 2.0
 
 outer_ring_spawn_zone_inner_ratio: 0.82
 outer_ring_spawn_zone_outer_ratio: 1.0
-accretion_spawn_rate: 0.001
+accretion_spawn_rate: 0.0
 
 # === HYDRODYNAMIC FORCES ===
 # inflow_strength: Stärke der radialen Einströmungskraft
@@ -48,7 +48,7 @@ restore_strength: 0.08
 # prob_repeated: Wahrscheinlichkeit für periodisch wiederkehrende Begegnungen
 # prob_flyby: Wahrscheinlichkeit für intensive Flybys
 
-galaxy_separation_factor: 3.0
+galaxy_separation_factor: 10.0
 prob_merge: 0.30
 prob_repeated: 0.35
 prob_flyby: 0.35
@@ -67,25 +67,27 @@ flyby_speed_factor: 0.90
 # repeated_angle: Annäherungswinkel für wiederkehrende Szenarien
 # flyby_angle: Annäherungswinkel für Flybys
 
-merge_angle: 0.05
-repeated_angle: 0.25
-flyby_angle: 0.35
+merge_angle: 0.25
+repeated_angle: 0.45
+flyby_angle: 0.65
 
 # === COMPUTATION INTERVALS ===
 # collision_interval: Wie oft pro Frame Kollisionen berechnet werden (höher = weniger oft)
 # attract_interval: Wie oft pro Frame Gravitationskräfte berechnet werden (höher = weniger oft)
 
 collision_interval: 4
-attract_interval: 2
+attract_interval: 1
 
 # === PARTICLE PHYSICS ===
 # orbital_speed_multiplier: Multiplikator für die Angular-Speed von neuen Partikeln
 # spawn_angular_speed_base: Basis-Wert für Angular-Speed bei Spawns
 # spawn_angular_speed_range: Zufällige Variation der Angular-Speed bei Spawns
+# spin_speed_multiplier: Globale Skalierung der Eigendrehung aller Partikel
 
 orbital_speed_multiplier: 0.025
 spawn_angular_speed_base: 0.3
 spawn_angular_speed_range: 0.5
+spin_speed_multiplier: 1.0
 
 # === BODY DEFORMATION ===
 # equatorial_growth_factor: Wie viel der Äquator-Radius bei Rotation wächst
@@ -93,8 +95,8 @@ spawn_angular_speed_range: 0.5
 # radius_scale: Skalierungsfaktor für alle Partikel-Radii
 
 equatorial_growth_factor: 0.18
-polar_flattening_factor: 0.14
-radius_scale: 0.25
+polar_flattening_factor: 0.18
+radius_scale: 0.0005
 
 # === DEPTH PERCEPTION ===
 # depth_scale_factor: Faktor für die Z-Position bei der Tiefenwahrnehmung
