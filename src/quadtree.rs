@@ -25,7 +25,11 @@ impl Oct {
             max_z = max_z.max(body.pos.z);
         }
 
-        let center = Vec3::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, (min_z + max_z) * 0.5);
+        let center = Vec3::new(
+            (min_x + max_x) * 0.5,
+            (min_y + max_y) * 0.5,
+            (min_z + max_z) * 0.5,
+        );
         let size = (max_x - min_x).max((max_y - min_y).max(max_z - min_z));
 
         Self { center, size }
@@ -205,7 +209,7 @@ impl Octree {
         }
     }
 
-    pub fn acc(&self, pos: Vec3) -> Vec3 {
+    pub fn acc(&self, pos: Vec3, softening_sq: f32) -> Vec3 {
         let mut acc = Vec3::zero();
 
         let mut node = Self::ROOT;
@@ -216,7 +220,7 @@ impl Octree {
 
             if n.is_leaf() || n.oct.size * n.oct.size < d_sq * self.t_sq {
                 if d_sq > 0.0 {
-                    let denom = (d_sq + self.e_sq) * d_sq.sqrt();
+                    let denom = (d_sq + softening_sq) * d_sq.sqrt();
                     acc += d * (n.mass / denom).min(f32::MAX);
                 }
 

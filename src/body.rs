@@ -15,6 +15,14 @@ pub struct Body {
 }
 
 impl Body {
+    fn sanitize_vec(v: Vec3) -> Vec3 {
+        Vec3::new(
+            if v.x.is_finite() { v.x } else { 0.0 },
+            if v.y.is_finite() { v.y } else { 0.0 },
+            if v.z.is_finite() { v.z } else { 0.0 },
+        )
+    }
+
     pub fn new(
         pos: Vec3,
         vel: Vec3,
@@ -31,15 +39,35 @@ impl Body {
 
         let scaled_radius = radius * 0.25;
         let mut body = Self {
-            pos,
-            vel,
+            pos: Self::sanitize_vec(pos),
+            vel: Self::sanitize_vec(vel),
             acc: Vec3::zero(),
-            mass,
-            base_radius: scaled_radius,
-            equatorial_radius: scaled_radius,
-            polar_radius: scaled_radius,
+            mass: if mass.is_finite() && mass > 0.0 {
+                mass
+            } else {
+                1.0
+            },
+            base_radius: if scaled_radius.is_finite() && scaled_radius > 0.0 {
+                scaled_radius
+            } else {
+                1.0
+            },
+            equatorial_radius: if scaled_radius.is_finite() && scaled_radius > 0.0 {
+                scaled_radius
+            } else {
+                1.0
+            },
+            polar_radius: if scaled_radius.is_finite() && scaled_radius > 0.0 {
+                scaled_radius
+            } else {
+                1.0
+            },
             rotation_axis,
-            angular_speed,
+            angular_speed: if angular_speed.is_finite() {
+                angular_speed
+            } else {
+                0.0
+            },
             spin_angle: 0.0,
         };
         body.update_shape();
@@ -50,6 +78,16 @@ impl Body {
         self.spin_angle += self.angular_speed * dt;
         self.vel += self.acc * dt;
         self.pos += self.vel * dt;
+
+        self.spin_angle = if self.spin_angle.is_finite() {
+            self.spin_angle
+        } else {
+            0.0
+        };
+        self.acc = Self::sanitize_vec(self.acc);
+        self.vel = Self::sanitize_vec(self.vel);
+        self.pos = Self::sanitize_vec(self.pos);
+
         self.update_shape();
     }
 
@@ -69,6 +107,7 @@ impl Body {
         let polar_flattening = 0.14 * spin * spin * axis_scale;
 
         self.equatorial_radius = self.base_radius * (1.0 + equatorial_growth).max(1.0);
-        self.polar_radius = (self.base_radius * (1.0 - polar_flattening)).max(self.base_radius * 0.35);
+        self.polar_radius =
+            (self.base_radius * (1.0 - polar_flattening)).max(self.base_radius * 0.35);
     }
 }

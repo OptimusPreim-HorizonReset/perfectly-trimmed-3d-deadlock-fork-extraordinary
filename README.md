@@ -44,6 +44,7 @@ This repository consists of three branches:
 - Rotationsachsen aller Partikel stehen senkrecht zur Ursprungsscheibe
 - Parallelisierte Aktualisierung der Körperbeschleunigung und Positionsupdates
 - 3D-Kollisionsbroadphase über eine räumliche Gitter-Hashmap
+- Adaptive, dichte-skalierte Gravitationssoftening mit Kernel-basierten SPH-Hydrodynamikkräften
 ## Wenn `cargo` nicht erkannt wird
 
 - Starte das Terminal neu, damit die PATH-Änderung wirksam wird.

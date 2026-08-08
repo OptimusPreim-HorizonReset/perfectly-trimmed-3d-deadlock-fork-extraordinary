@@ -10,10 +10,10 @@ Diese Datei listet die wichtigsten konfigurierbaren Eigenschaften und Parameter 
 # epsilon: Gravitational Softening für numerische Stabilität
 # n: Anzahl der Disk-Partikel pro Galaxie (ohne Zentralmasse)
 
-dt: 0.1
+dt: 1.0
 theta: 1.0
 epsilon: 1.1
-n: 50000
+n: 5000
 
 # === GALAXY STRUCTURE ===
 # inner_radius: Radius der zentralen Masse / des Bulge
@@ -21,34 +21,58 @@ n: 50000
 # central_mass: Masse des zentralen schwarzen Lochs / Galaxiezentrums
 # particle_mass_range: Min/Max Masse der Disk-Partikel (Format: min, max)
 
-inner_radius: 15.0
-outer_radius: 1000.03
-central_mass: 100000.0
-particle_mass_range: 0.005, 0.01
+inner_radius: 2.0
+outer_radius: 27.03
+central_mass: 0.0025
+particle_mass_range: 0.000000000005, 0.000005
 
 # === SPAWN ZONE CONFIGURATION ===
 # outer_ring_spawn_zone_inner_ratio: Innerer Radius der Spawn-Zone (als Verhältnis zu outer_radius)
 # outer_ring_spawn_zone_outer_ratio: Äußerer Radius der Spawn-Zone (als Verhältnis zu outer_radius)
 # accretion_spawn_rate: Wahrscheinlichkeit pro Step für einen neuen Partikel-Spawn
 
-outer_ring_spawn_zone_inner_ratio: 0.82
+outer_ring_spawn_zone_inner_ratio: 0.33
 outer_ring_spawn_zone_outer_ratio: 1.0
-accretion_spawn_rate: 0.0
+accretion_spawn_rate: 0.00
 
 # === HYDRODYNAMIC FORCES ===
 # inflow_strength: Stärke der radialen Einströmungskraft
 # restore_strength: Stärke der vertikalen Rückstellungskraft
+# adaptive_softening_enabled: Verwende adaptive, dichte-abhängige Softening-Länge
+# sph_enabled: Aktiviert SPH-/Hydro-Kernkräfte zur Kopplung von Gas und Sternen
+# softening_scale_factor: Basis-Smoothing-Länge in Vielfachen von epsilon
+# softening_min_factor: Minimaler Faktor für adaptive Softening-Länge
+# softening_max_factor: Maximaler Faktor für adaptive Softening-Länge
+# hydro_pressure_strength: Stärke des SPH-Druckterms
+# hydro_kernel_factor: Wie weit die Nachbarschaft für SPH-Kernel-Interaktionen reicht (in h)
+# render_update_interval: Frames zwischen Renderer-Datenaktualisierungen (höhere Werte sparen CPU)
+# performance_mode: Schaltet einen schnellen Modus ein, der SPH/Adaptive-Softening deaktiviert und Intervalle erhöht
+# ultra_performance_mode: Schaltet den maximalen FPS-Modus ein, der alle Zusatzphysiken minimiert und die Render-Aktualisierung stark ausdünnt
 
-inflow_strength: 0.025
-restore_strength: 0.08
+inflow_strength: 0.0000040
+restore_strength: 0.00000011
+adaptive_softening_enabled: false
+sph_enabled: false
+softening_scale_factor: 4.0
+softening_min_factor: 0.5
+softening_max_factor: 4.0
+hydro_pressure_strength: 0.02
+hydro_kernel_factor: 2.0
+render_update_interval: 2
+performance_mode: true
+ultra_performance_mode: false
 
 # === GALAXY INTERACTION ===
 # galaxy_separation_factor: Abstand zwischen Galaxien (Multipliziert mit outer_radius)
+# galaxy_count: Gesamtzahl der initial erzeugten Galaxien (paarweise angeordnet, auf gerade Zahl abgerundet)
+# galaxy_volume_scatter_factor: Skaliert das Volumen, in dem alle Galaxienpaare chaotisch verteilt werden
 # prob_merge: Wahrscheinlichkeit für verschmelzungsnahe Begegnungen
 # prob_repeated: Wahrscheinlichkeit für periodisch wiederkehrende Begegnungen
 # prob_flyby: Wahrscheinlichkeit für intensive Flybys
 
-galaxy_separation_factor: 10.0
+galaxy_separation_factor: 45.0
+galaxy_count: 6
+galaxy_volume_scatter_factor: 1.0
 prob_merge: 0.30
 prob_repeated: 0.35
 prob_flyby: 0.35
@@ -58,24 +82,24 @@ prob_flyby: 0.35
 # repeated_speed_factor: Skalierung der Relativgeschwindigkeit für wiederkehrende Szenarien
 # flyby_speed_factor: Skalierung der Relativgeschwindigkeit für Flybys
 
-merge_speed_factor: 0.50
-repeated_speed_factor: 0.70
-flyby_speed_factor: 0.90
+merge_speed_factor: 01.0
+repeated_speed_factor: 01.0
+flyby_speed_factor: 01.60
 
 # === INTERACTION ANGLES ===
 # merge_angle: Annäherungswinkel für Merge-Szenarien
 # repeated_angle: Annäherungswinkel für wiederkehrende Szenarien
 # flyby_angle: Annäherungswinkel für Flybys
 
-merge_angle: 0.25
-repeated_angle: 0.45
-flyby_angle: 0.65
+merge_angle: 5.25
+repeated_angle: 9.45
+flyby_angle: 10.05
 
 # === COMPUTATION INTERVALS ===
 # collision_interval: Wie oft pro Frame Kollisionen berechnet werden (höher = weniger oft)
 # attract_interval: Wie oft pro Frame Gravitationskräfte berechnet werden (höher = weniger oft)
 
-collision_interval: 4
+collision_interval: 16
 attract_interval: 1
 
 # === PARTICLE PHYSICS ===
@@ -87,7 +111,7 @@ attract_interval: 1
 orbital_speed_multiplier: 0.025
 spawn_angular_speed_base: 0.3
 spawn_angular_speed_range: 0.5
-spin_speed_multiplier: 1.0
+spin_speed_multiplier: 16.0
 
 # === BODY DEFORMATION ===
 # equatorial_growth_factor: Wie viel der Äquator-Radius bei Rotation wächst
@@ -96,14 +120,14 @@ spin_speed_multiplier: 1.0
 
 equatorial_growth_factor: 0.18
 polar_flattening_factor: 0.18
-radius_scale: 0.0005
+radius_scale: 0.5
 
 # === DEPTH PERCEPTION ===
 # depth_scale_factor: Faktor für die Z-Position bei der Tiefenwahrnehmung
 # spacetime_dilation_factor: Stärke der Gravitationswellenstrahlung für spiralisierende Annäherung der Zentren (höher = schnellere Spirale)
 
 depth_scale_factor: 0.002
-spacetime_dilation_factor: 0.5
+spacetime_dilation_factor: 0.9
 ```
 
 ## 1. Galaxie-Template / Spawn-Konfiguration

@@ -74,12 +74,12 @@ impl quarkstrom::Renderer for Renderer {
     }
 
     fn input(&mut self, input: &WinitInputHelper, width: u16, height: u16) {
+        self.viewport_size = Vec2::new(width as f32, height as f32);
         // Guard against a zero-size viewport (e.g. during window minimisation).
         if width == 0 || height == 0 {
             return;
         }
 
-        self.viewport_size = Vec2::new(width as f32, height as f32);
         self.settings_window_open ^= input.key_pressed(VirtualKeyCode::E);
 
         if input.key_pressed(VirtualKeyCode::Space) {
@@ -127,19 +127,22 @@ impl quarkstrom::Renderer for Renderer {
         if input.mouse_held(2) {
             let (mdx, mdy) = input.mouse_diff();
             self.camera_yaw -= mdx * self.camera_rotate_speed;
-            self.camera_pitch = (self.camera_pitch - mdy * self.camera_rotate_speed)
-                .clamp(-PI * 0.42, PI * 0.42);
+            self.camera_pitch =
+                (self.camera_pitch - mdy * self.camera_rotate_speed).clamp(-PI * 0.42, PI * 0.42);
         }
 
         let scroll = input.scroll_diff();
         if scroll != 0.0 {
-            self.camera_distance = (self.camera_distance * (-scroll * 0.075).exp())
-                .clamp(80.0, 2500.0);
+            self.camera_distance =
+                (self.camera_distance * (-scroll * 0.075).exp()).clamp(80.0, 2_500_000.0);
         }
-
     }
 
     fn render(&mut self, ctx: &mut quarkstrom::RenderContext) {
+        if self.viewport_size.x <= 0.0 || self.viewport_size.y <= 0.0 {
+            return;
+        }
+
         {
             let mut lock = UPDATE_LOCK.lock();
             if *lock {
@@ -167,7 +170,9 @@ impl quarkstrom::Renderer for Renderer {
         if !self.bodies.is_empty() {
             if self.show_bodies {
                 for body in &self.bodies {
-                    if let Some((pos, z)) = self.project_point_basis(body.pos, cam_pos, forward, right, up, tan_half, aspect) {
+                    if let Some((pos, z)) = self.project_point_basis(
+                        body.pos, cam_pos, forward, right, up, tan_half, aspect,
+                    ) {
                         let radius = body.projected_radius() / (z * tan_half).max(0.01);
                         ctx.draw_circle(pos, radius, [0xff; 4]);
                         if self.show_spin_axes {
@@ -178,7 +183,6 @@ impl quarkstrom::Renderer for Renderer {
                     }
                 }
             }
-
         }
 
         if self.show_quadtree && !self.quadtree.is_empty() {
@@ -248,7 +252,14 @@ impl quarkstrom::Renderer for Renderer {
         egui::Area::new("spawn_mode")
             .fixed_pos(egui::pos2(12.0, 12.0))
             .show(ctx, |ui| {
-                ui.label(format!("Spawn Mode: {}", if SPAWN_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label(format!(
+                    "Spawn Mode: {}",
+                    if SPAWN_ENABLED.load(Ordering::Relaxed) {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
+                ));
                 ui.label("Press X to toggle");
             });
 
@@ -258,9 +269,23 @@ impl quarkstrom::Renderer for Renderer {
                 ui.checkbox(&mut self.show_bodies, "Show Bodies");
                 ui.checkbox(&mut self.show_spin_axes, "Show Rotation Axis");
                 ui.checkbox(&mut self.show_quadtree, "Show Quadtree");
-                ui.label(format!("Particle spawn: {}", if SPAWN_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label(format!(
+                    "Particle spawn: {}",
+                    if SPAWN_ENABLED.load(Ordering::Relaxed) {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
+                ));
                 ui.label("Toggle with X");
-                ui.label(format!("Collisions: {}", if COLLISIONS_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label(format!(
+                    "Collisions: {}",
+                    if COLLISIONS_ENABLED.load(Ordering::Relaxed) {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
+                ));
                 ui.label("Toggle with Y");
                 ui.label("Reset with R");
                 if self.show_quadtree {
@@ -339,11 +364,9 @@ impl Renderer {
         let ndc = self.screen_to_ndc(mouse);
         let (forward, right, up) = self.camera_basis();
         let tan_half = (self.camera_fov * 0.5).tan();
-        let aspect = self.viewport_size.x / self.viewport_size.y;
-        let dir = (right * (ndc.x * aspect * tan_half)
-            + up * (ndc.y * tan_half)
-            + forward)
-            .normalized();
+        let aspect = self.viewport_size.x.max(1.0) / self.viewport_size.y.max(1.0);
+        let dir =
+            (right * (ndc.x * aspect * tan_half) + up * (ndc.y * tan_half) + forward).normalized();
         let origin = self.camera_pos();
         let plane_z = self.camera_target.z;
         let t = (plane_z - origin.z) / dir.z;
