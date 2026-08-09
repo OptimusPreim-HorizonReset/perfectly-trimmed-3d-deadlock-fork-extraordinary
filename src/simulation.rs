@@ -62,9 +62,9 @@ impl Simulation {
         bodies.extend(bodies1);
         let center2_idx = bodies.len();
         bodies.extend(bodies2);
- 
+
         let octree = Octree::new(theta, epsilon);
- 
+
         Self {
             dt,
             frame: 0,
@@ -77,10 +77,6 @@ impl Simulation {
             equatorial_plane_normal: Vec3::new(0.0, 0.0, 1.0),
             equatorial_plane_center: Vec3::zero(),
         }
-    }
-
-    pub fn render_update_interval(&self) -> usize {
-        self.config.render_update_interval.max(1)
     }
 
     fn random_inclination_axis() -> Vec3 {
@@ -161,6 +157,10 @@ impl Simulation {
         self.frame += 1;
     }
 
+    pub fn render_update_interval(&self) -> usize {
+        self.config.render_update_interval.max(1)
+    }
+
     pub fn attract(&mut self) {
         let oct = Oct::new_containing(&self.bodies);
         let reserve_nodes = self.bodies.len() * 6;
@@ -174,8 +174,10 @@ impl Simulation {
 
         self.octree.propagate();
 
+        let softening = self.config.epsilon * self.config.softening_scale_factor;
+        let softening_sq = softening * softening;
         self.bodies.par_iter_mut().for_each(|body| {
-            body.acc = self.octree.acc(body.pos, self.octree.e_sq);
+            body.acc = self.octree.acc(body.pos, softening_sq);
         });
 
         self.apply_hydrodynamic_inflow();
@@ -424,7 +426,9 @@ impl Simulation {
         let mass = mass_min + fastrand::f32() * (mass_max - mass_min);
         let radius = mass.cbrt();
 
-        let acc = self.octree.acc(spawn_pos, self.octree.e_sq);
+        let softening = self.config.epsilon * self.config.softening_scale_factor;
+        let softening_sq = softening * softening;
+        let acc = self.octree.acc(spawn_pos, softening_sq);
         let orbital_speed = (acc.mag() * r).sqrt();
         let vel = tangent * orbital_speed;
 
