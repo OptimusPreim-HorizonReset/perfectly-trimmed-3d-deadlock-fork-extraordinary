@@ -30,8 +30,7 @@ impl GalaxyTemplate {
     pub fn spiral(n: usize) -> Self {
         let outer_radius = (n as f32).sqrt() * 5.0;
         let inner_radius = 25.0;
-        let spawn_inner =
-            ((2.0 * outer_radius * outer_radius + inner_radius * inner_radius) / 3.0).sqrt();
+        let spawn_inner = ((2.0 * outer_radius * outer_radius + inner_radius * inner_radius) / 3.0).sqrt();
         Self {
             n,
             inner_radius,
@@ -50,8 +49,7 @@ impl GalaxyTemplate {
     pub fn elliptical(n: usize) -> Self {
         let outer_radius = (n as f32).sqrt() * 7.0;
         let inner_radius = 15.0;
-        let spawn_inner =
-            ((2.0 * outer_radius * outer_radius + inner_radius * inner_radius) / 3.0).sqrt();
+        let spawn_inner = ((2.0 * outer_radius * outer_radius + inner_radius * inner_radius) / 3.0).sqrt();
         Self {
             n,
             inner_radius,
@@ -68,10 +66,8 @@ impl GalaxyTemplate {
     pub fn from_config(config: &InformationsConfig) -> Self {
         let outer_radius = config.outer_radius;
         // Vereinfachte Priority: Nutze nur die Ratios aus der Config
-        let outer_ring_spawn_zone_inner_radius =
-            config.outer_ring_spawn_zone_inner_ratio * outer_radius;
-        let outer_ring_spawn_zone_outer_radius =
-            config.outer_ring_spawn_zone_outer_ratio * outer_radius;
+        let outer_ring_spawn_zone_inner_radius = config.outer_ring_spawn_zone_inner_ratio * outer_radius;
+        let outer_ring_spawn_zone_outer_radius = config.outer_ring_spawn_zone_outer_ratio * outer_radius;
 
         Self {
             n: config.n,
@@ -114,19 +110,12 @@ impl GalaxyTemplate {
             let (sin, cos) = a.sin_cos();
             let t = self.inner_radius / self.outer_radius;
             let r = fastrand::f32() * (1.0 - t * t) + t * t;
-            let thickness = self.outer_radius * 0.002;
+            let thickness = self.outer_radius * 0.01;
             let z = (fastrand::f32() - 0.5) * thickness;
-            let offset =
-                Vec3::new(cos, sin, 0.0) * self.outer_radius * r.sqrt() + Vec3::new(0.0, 0.0, z);
+            let offset = Vec3::new(cos, sin, 0.0) * self.outer_radius * r.sqrt() + Vec3::new(0.0, 0.0, z);
             // Unit tangent for a clockwise orbit.
             let tangent = Vec3::new(sin, -cos, 0.0);
-            // Realistic mass distribution: heavier particles near the center,
-            // lighter ones further out, with some random scatter around the
-            // radius-dependent baseline.
-            let radial_falloff = 1.0 - r.sqrt();
-            let base_mass = mass_min + radial_falloff * (mass_max - mass_min);
-            let mass = (base_mass + (fastrand::f32() - 0.5) * (mass_max - mass_min) * 0.3)
-                .clamp(mass_min, mass_max);
+            let mass = mass_min + fastrand::f32() * (mass_max - mass_min);
             let radius = mass.cbrt();
             bodies.push(Body::new(
                 center + offset,
@@ -197,7 +186,7 @@ impl GalaxyTemplate {
             let (sin, cos) = a.sin_cos();
             let t = self.inner_radius / self.outer_radius;
             let r = fastrand::f32() * (1.0 - t * t) + t * t;
-            let thickness = self.outer_radius * 0.002;
+            let thickness = self.outer_radius * 0.01;
             let depth = (fastrand::f32() - 0.5) * thickness;
             let offset = (u * cos + v * sin) * self.outer_radius * r.sqrt() + rotation_axis * depth;
             let tangent_dir = if clockwise {
@@ -205,13 +194,7 @@ impl GalaxyTemplate {
             } else {
                 rotation_axis.cross(offset).normalized()
             };
-            // Realistic mass distribution: heavier particles near the center,
-            // lighter ones further out, with some random scatter around the
-            // radius-dependent baseline.
-            let radial_falloff = 1.0 - r.sqrt();
-            let base_mass = mass_min + radial_falloff * (mass_max - mass_min);
-            let mass = (base_mass + (fastrand::f32() - 0.5) * (mass_max - mass_min) * 0.3)
-                .clamp(mass_min, mass_max);
+            let mass = mass_min + fastrand::f32() * (mass_max - mass_min);
             let radius = mass.cbrt();
             bodies.push(Body::new(
                 center + offset,
@@ -238,10 +221,7 @@ impl GalaxyTemplate {
             }
             let orbital_speed = (enclosed_mass / offset.mag()).sqrt();
             body.vel = velocity + body.vel * orbital_speed;
-            body.angular_speed += orbital_speed
-                * 0.025
-                * if clockwise { 1.0 } else { -1.0 }
-                * self.spin_speed_multiplier;
+            body.angular_speed += orbital_speed * 0.025 * if clockwise { 1.0 } else { -1.0 } * self.spin_speed_multiplier;
         }
 
         bodies

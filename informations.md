@@ -13,7 +13,7 @@ Diese Datei listet die wichtigsten konfigurierbaren Eigenschaften und Parameter 
 dt: 1.0
 theta: 1.0
 epsilon: 1.1
-n: 5000
+n: 100
 
 # === GALAXY STRUCTURE ===
 # inner_radius: Radius der zentralen Masse / des Bulge
@@ -21,10 +21,10 @@ n: 5000
 # central_mass: Masse des zentralen schwarzen Lochs / Galaxiezentrums
 # particle_mass_range: Min/Max Masse der Disk-Partikel (Format: min, max)
 
-inner_radius: 2.0
-outer_radius: 27.03
+inner_radius: 1.0
+outer_radius: 2.03
 central_mass: 0.0025
-particle_mass_range: 0.000000000005, 0.000005
+particle_mass_range: 0.0000005, 0.000005
 
 # === SPAWN ZONE CONFIGURATION ===
 # outer_ring_spawn_zone_inner_ratio: Innerer Radius der Spawn-Zone (als Verhältnis zu outer_radius)
@@ -51,8 +51,8 @@ accretion_spawn_rate: 0.00
 
 inflow_strength: 0.0000040
 restore_strength: 0.00000011
-adaptive_softening_enabled: false
-sph_enabled: false
+adaptive_softening_enabled: true
+sph_enabled: true
 softening_scale_factor: 4.0
 softening_min_factor: 0.5
 softening_max_factor: 4.0
@@ -70,9 +70,9 @@ ultra_performance_mode: false
 # prob_repeated: Wahrscheinlichkeit für periodisch wiederkehrende Begegnungen
 # prob_flyby: Wahrscheinlichkeit für intensive Flybys
 
-galaxy_separation_factor: 45.0
-galaxy_count: 6
-galaxy_volume_scatter_factor: 1.0
+galaxy_separation_factor: 25.0
+galaxy_count: 20
+galaxy_volume_scatter_factor: 6.0
 prob_merge: 0.30
 prob_repeated: 0.35
 prob_flyby: 0.35
@@ -111,7 +111,7 @@ attract_interval: 1
 orbital_speed_multiplier: 0.025
 spawn_angular_speed_base: 0.3
 spawn_angular_speed_range: 0.5
-spin_speed_multiplier: 16.0
+spin_speed_multiplier: 8.0
 
 # === BODY DEFORMATION ===
 # equatorial_growth_factor: Wie viel der Äquator-Radius bei Rotation wächst
