@@ -1426,10 +1426,11 @@ impl Simulation {
         let merged_radius = (b1.base_radius.powi(3) + b2.base_radius.powi(3)).cbrt();
         let base_merged_angular_speed =
             (b1.angular_speed.abs() * b1.mass + b2.angular_speed.abs() * b2.mass) / total_mass;
+        // For PGD mode, boost the absolute merged spin magnitude by 1.5.
         let merged_angular_speed = if !self.config.enable_galactic_atom_simulation {
-            base_merged_angular_speed * 1.5
+            base_merged_angular_speed.abs() * 1.5
         } else {
-            base_merged_angular_speed
+            base_merged_angular_speed.abs()
         };
         let mut merged_body = Body::new_element(
             merged_pos,
@@ -1514,10 +1515,11 @@ impl Simulation {
         let merged_radius = (b1.base_radius.powi(3) + b2.base_radius.powi(3)).cbrt();
         let base_merged_angular_speed =
             (b1.angular_speed.abs() * b1.mass + b2.angular_speed.abs() * b2.mass) / total_mass;
+        // For PGD mode, boost the absolute merged spin magnitude by 1.5.
         let merged_angular_speed = if !self.config.enable_galactic_atom_simulation {
-            base_merged_angular_speed * 1.5
+            base_merged_angular_speed.abs() * 1.5
         } else {
-            base_merged_angular_speed
+            base_merged_angular_speed.abs()
         };
         let mut merged_body = Body::new(
             merged_pos,
@@ -1729,6 +1731,55 @@ impl Simulation {
             sim.collide();
             assert_eq!(sim.bodies.len(), 2, "first contact should not yet merge orbital particles");
  
+            sim.collide();
+            assert_eq!(sim.bodies.len(), 1, "second contact should merge orbital particles");
+            assert_eq!(sim.bodies[0].angular_speed, 2.25);
+        }
+ 
+        #[test]
+        fn pgd_merge_uses_absolute_child_spin_value() {
+            let mut sim = Simulation::new(&InformationsConfig::default());
+            sim.bodies.clear();
+            sim.pairs.clear();
+            sim.merge_contact_frames.clear();
+ 
+            let body1 = Body::new_element(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::zero(),
+                1.0,
+                1.0,
+                -1.0,
+                Vec3::new(0.0, 0.0, 1.0),
+                6,
+                ParticleSegmentType::Orbital,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+            );
+            let body2 = Body::new_element(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::zero(),
+                1.0,
+                1.0,
+                -2.0,
+                Vec3::new(0.0, 0.0, 1.0),
+                6,
+                ParticleSegmentType::Orbital,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+            );
+            sim.bodies.push(body1);
+            sim.bodies.push(body2);
+ 
+            sim.collide();
+            assert_eq!(sim.bodies.len(), 2, "first contact should not yet merge orbital particles");
             sim.collide();
             assert_eq!(sim.bodies.len(), 1, "second contact should merge orbital particles");
             assert_eq!(sim.bodies[0].angular_speed, 2.25);
