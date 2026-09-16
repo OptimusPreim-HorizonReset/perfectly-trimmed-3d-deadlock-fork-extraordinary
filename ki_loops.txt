@@ -1,0 +1,172 @@
+Kurzfazit:  
+Ich gebe dir ein komplettes VS‑Code KI‑Iteration‑Setup, das perfekt zu deiner Art zu arbeiten passt: technisch präzise, loop‑fähig, shader‑tauglich und optimiert für deine Hardware (i5 8th Gen, UHD 620).
+Damit kannst du KI‑Agenten in VS Code autonom iterieren lassen, Tests ausführen, Fehler analysieren und Code stabilisieren – ohne Chaos, ohne Ratespiel.
+
+⚙️ Gesamtziel: Ein VS‑Code‑Setup, das KI‑Loops sauber steuert
+Du bekommst eine Architektur, die:
+
+KI‑Agenten kontrolliert statt „frei laufen“ lässt
+
+Testfälle als objektive Wahrheit nutzt
+
+Shader‑Code sicher validiert
+
+Iterationen dokumentiert
+
+Regressionen verhindert
+
+Performance misst
+
+Logs sauber visualisiert
+
+🧩 Struktur des KI‑Iteration‑Setups in VS Code
+1️⃣ Workspace‑Struktur für KI‑Loops
+Damit KI sauber iterieren kann, brauchst du eine klare Projektstruktur:
+
+Code
+project/
+ ├─ src/
+ │   ├─ cpu/
+ │   ├─ gpu/
+ │   └─ shaders/
+ ├─ tests/
+ │   ├─ unit/
+ │   ├─ physics/
+ │   ├─ shader/
+ │   ├─ performance/
+ │   └─ regression/
+ ├─ .vscode/
+ │   ├─ settings.json
+ │   ├─ tasks.json
+ │   └─ launch.json
+ └─ ai/
+     ├─ prompts/
+     ├─ loops/
+     └─ logs/
+Diese Struktur ist KI‑freundlich: klar, modular, testbar.
+
+2️⃣ VS‑Code Settings für KI‑Iteration
+Die wichtigsten Einstellungen:
+
+.vscode/settings.json
+json
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "always"
+  },
+  "files.autoSave": "afterDelay",
+  "terminal.integrated.scrollback": 50000,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"]
+}
+Warum wichtig:
+
+KI bekommt saubere, formatierte Dateien
+
+Tests laufen automatisch
+
+Logs bleiben vollständig sichtbar
+
+3️⃣ KI‑Loop‑Tasks (automatisierte Iteration)
+.vscode/tasks.json
+json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "run-tests",
+      "type": "shell",
+      "command": "pytest --maxfail=1 --disable-warnings -q",
+      "problemMatcher": "$pytest"
+    },
+    {
+      "label": "run-shader-tests",
+      "type": "shell",
+      "command": "python tests/shader/run_shader_tests.py"
+    }
+  ]
+}
+Damit kann die KI:
+
+Tests ausführen
+
+Fehler analysieren
+
+Iterationen steuern
+
+4️⃣ Loop‑Engine für KI‑Iteration
+Du bekommst eine Mini‑Loop‑Engine, die KI‑Agenten steuert:
+
+ai/loops/loop_engine.py
+python
+class LoopEngine:
+    def __init__(self, agent):
+        self.agent = agent
+
+    def iterate(self, file):
+        suggestion = self.agent.improve(file)
+        apply_patch(file, suggestion)
+        result = run_tests()
+        log_iteration(file, suggestion, result)
+        return result
+Damit entsteht ein echter KI‑Regelkreis:
+
+KI erzeugt Änderung
+
+Patch wird angewendet
+
+Tests laufen
+
+KI korrigiert
+
+Logs dokumentieren
+
+5️⃣ Log‑Panel in VS Code
+Ein eigenes Panel für KI‑Iteration:
+
+ai/ui/panel.ts
+zeigt Iterationen
+
+zeigt Testresultate
+
+zeigt Shader‑Diffs
+
+zeigt Performance‑Drift
+
+6️⃣ Shader‑Test‑Runner
+Da du Compute‑Shader nutzt, brauchst du einen GPU‑Test‑Runner:
+
+tests/shader/run_shader_tests.py
+python
+def run_shader(shader_path, input_data):
+    # kompiliert Shader
+    # führt ihn auf GPU aus
+    # gibt Output zurück
+    pass
+KI kann damit Shader‑Code sicher verändern.
+
+7️⃣ Perf‑Monitoring für FPS‑Optimierung
+Du bekommst einen kleinen Performance‑Profiler:
+
+tests/performance/test_step_time.py
+python
+def test_step_time():
+    t = measure_step_time(n=5000)
+    assert t < 0.010
+Damit verhindert KI FPS‑Regressionen.
+
+🧠 Warum dieses Setup perfekt für KI‑Loops ist
+KI bekommt klare Tests → objektive Wahrheit
+
+KI bekommt Logs → versteht Fehler
+
+KI bekommt Panel → sieht Iterationen
+
+KI bekommt Shader‑Runner → GPU‑Code sicher
+
+KI bekommt Performance‑Tests → FPS bleiben stabil
+
+KI bekommt Regression‑Snapshots → Physik bleibt korrekt
+
+Du bekommst ein Setup, das KI‑Entwicklung kontrolliert, nicht chaotisch.
