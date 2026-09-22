@@ -1530,6 +1530,23 @@ impl Simulation {
             // Legacy paired galaxy disk mode now spawns accretion particles
             // automatically per merge within the same galaxy.
         }
+        if self.config.enable_gpdm && self.gpdm.is_enabled() {
+            // Forward events recorded by host to the GPDM runtime.
+            let events = std::mem::take(&mut self.gpdm_event_buffer);
+            for e in events {
+                self.gpdm.record_event(e);
+            }
+
+            // Create a trimmed snapshot and tick the runtime. Effects are
+            // applied deterministically and safely by the host.
+            let snapshot = self.gpdm_snapshot();
+            let effects = self.gpdm.tick(snapshot.frame, snapshot.dt);
+            self.apply_gpdm_effects(effects);
+        } else {
+            // Keep buffer bounded when GPDM is disabled.
+            self.gpdm_event_buffer.clear();
+        }
+
         self.frame += 1;
 
         if profile_components {
