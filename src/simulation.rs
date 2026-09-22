@@ -688,6 +688,8 @@ impl Simulation {
     }
 
     fn insert_body_at(&mut self, insert_idx: usize, body: Body) {
+        // Record spawn event before mutating the bodies vector.
+        self.record_gpdm_event(crate::gpdm::host::HostEvent::Spawned { id: body.id });
         self.bodies.insert(insert_idx, body);
         for pair in self.pairs.iter_mut() {
             if pair.center1_idx != usize::MAX && pair.center1_idx >= insert_idx {
@@ -1378,6 +1380,8 @@ impl Simulation {
         if !queue.is_empty() {
             for mut body in queue.drain(..) {
                 Self::initialize_adaptive_state(&mut body, self.config.effective_theta(), self.dt);
+                // Record spawn event before mutating the bodies vector.
+                self.record_gpdm_event(crate::gpdm::host::HostEvent::Spawned { id: body.id });
                 self.bodies.push(body);
             }
         }
@@ -3044,6 +3048,11 @@ impl Simulation {
         };
         Self::initialize_adaptive_state(&mut merged_body, self.config.effective_theta(), self.dt);
         merged_body.process_flash = 1.0;
+        // Record merge event before mutating the bodies vector so GPDM receives deterministic ordering.
+        self.record_gpdm_event(crate::gpdm::host::HostEvent::Merged {
+            survivor: b1.id,
+            removed: b2.id,
+        });
         self.bodies[first] = merged_body;
         self.bodies.remove(second);
         self.shift_contact_frames_after_removal(second);
