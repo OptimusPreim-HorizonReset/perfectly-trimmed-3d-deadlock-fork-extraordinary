@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     body::Body,
+    config, elements,
     quadtree::{Node, Octree},
 };
 
@@ -25,6 +26,9 @@ pub static RESET_REQUESTED: Lazy<AtomicBool> = Lazy::new(|| false.into());
 
 pub static BODIES: Lazy<Mutex<Vec<Body>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static QUADTREE: Lazy<Mutex<Vec<Node>>> = Lazy::new(|| Mutex::new(Vec::new()));
+pub static CURRENT_CONFIG: Lazy<Mutex<config::InformationsConfig>> =
+    Lazy::new(|| Mutex::new(config::InformationsConfig::default()));
+pub static SPAWN_QUEUE: Lazy<Mutex<Vec<Body>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 pub struct Renderer {
     camera_target: Vec3,
@@ -43,6 +47,13 @@ pub struct Renderer {
     show_spin_axes: bool,
 
     depth_range: (usize, usize),
+
+    sample_mode_open: bool,
+    selected_element_atomic_number: u8,
+    spawn_dragging: bool,
+    spawn_start_world: Vec3,
+    spawn_current_world: Vec3,
+    spawn_start_screen: Vec2,
 
     bodies: Vec<Body>,
     quadtree: Vec<Node>,
@@ -67,6 +78,13 @@ impl quarkstrom::Renderer for Renderer {
             show_spin_axes: true,
 
             depth_range: (0, 0),
+
+            sample_mode_open: false,
+            selected_element_atomic_number: 1,
+            spawn_dragging: false,
+            spawn_start_world: Vec3::zero(),
+            spawn_current_world: Vec3::zero(),
+            spawn_start_screen: Vec2::zero(),
 
             bodies: Vec::new(),
             quadtree: Vec::new(),
@@ -99,6 +117,43 @@ impl quarkstrom::Renderer for Renderer {
             RESET_REQUESTED.store(true, Ordering::Relaxed);
         }
 
+        if input.key_pressed(VirtualKeyCode::Grave) {
+            self.sample_mode_open = !self.sample_mode_open;
+            self.spawn_dragging = false;
+        }
+
+        if input.key_pressed(VirtualKeyCode::P) {
+            if self.sample_mode_open {
+                if let Some((x, y)) = input.mouse() {
+                    let world_pos = self.screen_to_world(Vec2::new(x, y));
+                    self.spawn_element_sample(world_pos, Vec3::zero());
+                    self.sample_mode_open = false;
+                }
+            }
+        }
+
+        if self.sample_mode_open {
+            if input.mouse_pressed(1) {
+                if let Some((x, y)) = input.mouse() {
+                    self.spawn_dragging = true;
+                    self.spawn_start_screen = Vec2::new(x, y);
+                    self.spawn_start_world = self.screen_to_world(self.spawn_start_screen);
+                    self.spawn_current_world = self.spawn_start_world;
+                }
+            }
+            if self.spawn_dragging {
+                if let Some((x, y)) = input.mouse() {
+                    self.spawn_current_world = self.screen_to_world(Vec2::new(x, y));
+                }
+                if input.mouse_released(1) {
+                    let velocity = (self.spawn_current_world - self.spawn_start_world) * 0.18;
+                    self.spawn_element_sample(self.spawn_start_world, velocity);
+                    self.spawn_dragging = false;
+                    self.sample_mode_open = false;
+                }
+            }
+        }
+
         let move_delta = self.camera_speed * 0.04;
         let (forward, right, up) = self.camera_basis();
         let mut pan = Vec3::zero();
@@ -127,16 +182,15 @@ impl quarkstrom::Renderer for Renderer {
         if input.mouse_held(2) {
             let (mdx, mdy) = input.mouse_diff();
             self.camera_yaw -= mdx * self.camera_rotate_speed;
-            self.camera_pitch = (self.camera_pitch - mdy * self.camera_rotate_speed)
-                .clamp(-PI * 0.42, PI * 0.42);
+            self.camera_pitch =
+                (self.camera_pitch - mdy * self.camera_rotate_speed).clamp(-PI * 0.42, PI * 0.42);
         }
 
         let scroll = input.scroll_diff();
         if scroll != 0.0 {
-            self.camera_distance = (self.camera_distance * (-scroll * 0.075).exp())
-                .clamp(80.0, 2_500_000.0);
+            self.camera_distance =
+                (self.camera_distance * (-scroll * 0.075).exp()).clamp(80.0, 2_500_000.0);
         }
-
     }
 
     fn render(&mut self, ctx: &mut quarkstrom::RenderContext) {
@@ -167,9 +221,16 @@ impl quarkstrom::Renderer for Renderer {
         if !self.bodies.is_empty() {
             if self.show_bodies {
                 for body in &self.bodies {
-                    if let Some((pos, z)) = self.project_point_basis(body.pos, cam_pos, forward, right, up, tan_half, aspect) {
+                    if let Some((pos, z)) = self.project_point_basis(
+                        body.pos, cam_pos, forward, right, up, tan_half, aspect,
+                    ) {
                         let radius = body.projected_radius() / (z * tan_half).max(0.01);
-                        ctx.draw_circle(pos, radius, [0xff; 4]);
+                        let hue = ((body.element_mass_dimension.max(1.0).ln() * 10.0) % 180.0) - 90.0;
+                        let saturation = (body.element_reactivity.max(1.0).ln() * 10.0).clamp(20.0, 100.0);
+                        let lightness = (60.0 + body.element_light.min(20.0)).clamp(30.0, 80.0);
+                        let rgba: Rgba = Hsluv::new(hue, saturation, lightness).into_color();
+                        let color = rgba.into_format().into();
+                        ctx.draw_circle(pos, radius, color);
                         if self.show_spin_axes {
                             let axis_len = body.polar_radius / (z * tan_half).max(0.01) * 0.45;
                             let axis_tip = pos + Vec2::new(0.0, -axis_len);
@@ -178,7 +239,6 @@ impl quarkstrom::Renderer for Renderer {
                     }
                 }
             }
-
         }
 
         if self.show_quadtree && !self.quadtree.is_empty() {
@@ -248,7 +308,14 @@ impl quarkstrom::Renderer for Renderer {
         egui::Area::new("spawn_mode")
             .fixed_pos(egui::pos2(12.0, 12.0))
             .show(ctx, |ui| {
-                ui.label(format!("Spawn Mode: {}", if SPAWN_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label(format!(
+                    "Spawn Mode: {}",
+                    if SPAWN_ENABLED.load(Ordering::Relaxed) {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
+                ));
                 ui.label("Press X to toggle");
             });
 
@@ -258,11 +325,71 @@ impl quarkstrom::Renderer for Renderer {
                 ui.checkbox(&mut self.show_bodies, "Show Bodies");
                 ui.checkbox(&mut self.show_spin_axes, "Show Rotation Axis");
                 ui.checkbox(&mut self.show_quadtree, "Show Quadtree");
-                ui.label(format!("Particle spawn: {}", if SPAWN_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label(format!(
+                    "Particle spawn: {}",
+                    if SPAWN_ENABLED.load(Ordering::Relaxed) {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
+                ));
                 ui.label("Toggle with X");
-                ui.label(format!("Collisions: {}", if COLLISIONS_ENABLED.load(Ordering::Relaxed) { "ON" } else { "OFF" }));
+                ui.label(format!(
+                    "Collisions: {}",
+                    if COLLISIONS_ENABLED.load(Ordering::Relaxed) {
+                        "ON"
+                    } else {
+                        "OFF"
+                    }
+                ));
                 ui.label("Toggle with Y");
                 ui.label("Reset with R");
+                ui.separator();
+                ui.label("Sample Placement");
+                ui.label("Press `^` (Grave) to open sample selector");
+                ui.label("Press `P` while selector is open to place sample at cursor");
+                ui.label("Right-click drag to place with launch velocity");
+                ui.horizontal(|ui| {
+                    ui.label("Element:");
+                    ui.add(
+                        egui::DragValue::new(&mut self.selected_element_atomic_number)
+                            .clamp_range(1..=118)
+                            .speed(1.0),
+                    );
+                });
+                if let Some(element) = elements::element_by_atomic_number(self.selected_element_atomic_number) {
+                    ui.label(format!(
+                        "Selected: {} ({})",
+                        self.selected_element_atomic_number,
+                        element.symbol
+                    ));
+                    ui.label(format!(
+                        "Prime dimension: {}",
+                        element.prime_dimension()
+                    ));
+                    ui.label(format!(
+                        "Prime gap: {}",
+                        element.prime_gap()
+                    ));
+                    ui.label(format!(
+                        "Mass dimension index: {:.2}",
+                        element.mass_dimension()
+                    ));
+                } else {
+                    ui.label(format!(
+                        "Selected: {} (?)",
+                        self.selected_element_atomic_number
+                    ));
+                }
+                if self.spawn_dragging {
+                    let delta = self.spawn_current_world - self.spawn_start_world;
+                    ui.label(format!(
+                        "Drag velocity preview: {:.3},{:.3},{:.3}",
+                        delta.x * 0.18,
+                        delta.y * 0.18,
+                        delta.z * 0.18
+                    ));
+                }
                 if self.show_quadtree {
                     let range = &mut self.depth_range;
                     ui.horizontal(|ui| {
@@ -277,6 +404,38 @@ impl quarkstrom::Renderer for Renderer {
 }
 
 impl Renderer {
+    fn spawn_element_sample(&self, world_pos: Vec3, launch_velocity: Vec3) {
+        let atomic_number = self.selected_element_atomic_number.clamp(1, 118);
+        if let Some(element) = elements::element_by_atomic_number(atomic_number) {
+            let sample_config = CURRENT_CONFIG.lock().clone();
+            let radius_scale = sample_config.element_radius_scale
+                * sample_config.element_sample_orbit_radius_scale;
+            let speed_factor = sample_config.element_sample_orbit_speed_factor;
+
+            let mut bodies = elements::generate_atomic_system(
+                element,
+                world_pos,
+                Vec3::new(0.0, 1.0, 0.0),
+                sample_config.element_center_mass_unit,
+                sample_config.element_orbital_mass_unit,
+                radius_scale,
+                sample_config.element_prime_alpha,
+                sample_config.element_prime_beta,
+                sample_config.element_light_energy,
+            );
+
+            for body in &mut bodies {
+                if (body.pos - world_pos).mag() > 0.01 {
+                    body.vel *= speed_factor;
+                    body.vel += launch_velocity;
+                }
+            }
+
+            let mut queue = SPAWN_QUEUE.lock();
+            queue.extend(bodies);
+        }
+    }
+
     fn camera_pos(&self) -> Vec3 {
         let cos_pitch = self.camera_pitch.cos();
         let x = self.camera_distance * cos_pitch * self.camera_yaw.cos();
@@ -340,10 +499,8 @@ impl Renderer {
         let (forward, right, up) = self.camera_basis();
         let tan_half = (self.camera_fov * 0.5).tan();
         let aspect = self.viewport_size.x / self.viewport_size.y;
-        let dir = (right * (ndc.x * aspect * tan_half)
-            + up * (ndc.y * tan_half)
-            + forward)
-            .normalized();
+        let dir =
+            (right * (ndc.x * aspect * tan_half) + up * (ndc.y * tan_half) + forward).normalized();
         let origin = self.camera_pos();
         let plane_z = self.camera_target.z;
         let t = (plane_z - origin.z) / dir.z;
