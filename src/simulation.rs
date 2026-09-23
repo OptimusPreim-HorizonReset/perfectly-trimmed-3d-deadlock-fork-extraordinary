@@ -59,6 +59,10 @@ pub struct Simulation {
     pending_bonds: Vec<(usize, usize)>,
     /// GPDM runtime (disabled by default in Phase 0)
     pub gpdm: crate::gpdm::GpdmRuntime,
+    /// Host-side participant mapping (Body.id -> ParticipantState)
+    pub gpdm_participants: std::collections::HashMap<u64, crate::gpdm::participant::ParticipantState>,
+    /// Host-side account ledger map (AccountMap)
+    pub gpdm_accounts: crate::gpdm::accounts::AccountMap,
     /// Events recorded by host operations for GPDM to consume (drained each step)
     gpdm_event_buffer: Vec<crate::gpdm::host::HostEvent>,
 }
@@ -1261,6 +1265,9 @@ impl Simulation {
             pending_bonds: Vec::new(),
             gpdm: crate::gpdm::GpdmRuntime::disabled(),
             gpdm_event_buffer: Vec::new(),
+            // Phase-1 host-side GPDM participant and ledger state.
+            gpdm_participants: std::collections::HashMap::new(),
+            gpdm_accounts: crate::gpdm::accounts::AccountMap::new(),
         }
     }
 
@@ -1536,7 +1543,115 @@ impl Simulation {
         }
         if self.config.enable_gpdm && self.gpdm.is_enabled() {
             // Forward events recorded by host to the GPDM runtime.
-            let events = std::mem::take(&mut self.gpdm_event_buffer);
+            let mut events = std::mem::take(&mut self.gpdm_event_buffer);
+
+            // Bootstrap participant snapshots and accounts for Spawned/Merged events
+            for ev in &events {
+                match ev {
+                    crate::gpdm::host::HostEvent::Spawned { id } => {
+                        // Ensure an account exists for this participant (idempotent)
+                        crate::gpdm::accounts::ensure_account(&mut self.gpdm_accounts, *id, 0.0);
+
+                        // If participant does not exist, create a snapshot (prefer host body data)
+                        if !self.gpdm_participants.contains_key(id) {
+                            if let Some(body) = self.bodies.iter().find(|b| b.id == *id) {
+                                self.gpdm_participants.insert(
+                                    *id,
+                                    crate::gpdm::participant::ParticipantState::from_body(
+                                        *id, body.pos, body.vel, body.mass,
+                                    ),
+                                );
+                            } else {
+                                // Placeholder snapshot when host body not present yet
+                                self.gpdm_participants.insert(
+                                    *id,
+                                    crate::gpdm::participant::ParticipantState::from_body(
+                                        *id,
+                                        Vec3::zero(),
+                                        Vec3::zero(),
+                                        0.0,
+                                    ),
+                                );
+                            }
+                        } else {
+                            // If a participant already exists (e.g., id reuse after removal), refresh/activate it
+                            if let Some(body) = self.bodies.iter().find(|b| b.id == *id) {
+                                if let Some(p) = self.gpdm_participants.get_mut(id) {
+                                    p.active = true;
+                                    p.position = body.pos;
+                                    p.velocity = body.vel;
+                                    p.mass = body.mass;
+                                    p.removed_frame = None;
+                                }
+                            } else if let Some(p) = self.gpdm_participants.get_mut(id) {
+                                p.active = true;
+                                p.position = Vec3::zero();
+                                p.velocity = Vec3::zero();
+                                p.mass = 0.0;
+                                p.removed_frame = None;
+                            }
+                        }
+                    }
+                    crate::gpdm::host::HostEvent::Merged { survivor, removed } => {
+                        // Ensure accounts present for both sides
+                        crate::gpdm::accounts::ensure_account(&mut self.gpdm_accounts, *survivor, 0.0);
+                        crate::gpdm::accounts::ensure_account(&mut self.gpdm_accounts, *removed, 0.0);
+
+                        // Ensure survivor snapshot exists and refresh its active state
+                        if !self.gpdm_participants.contains_key(survivor) {
+                            if let Some(body) = self.bodies.iter().find(|b| b.id == *survivor) {
+                                self.gpdm_participants.insert(
+                                    *survivor,
+                                    crate::gpdm::participant::ParticipantState::from_body(
+                                        *survivor, body.pos, body.vel, body.mass,
+                                    ),
+                                );
+                            } else {
+                                self.gpdm_participants.insert(
+                                    *survivor,
+                                    crate::gpdm::participant::ParticipantState::from_body(
+                                        *survivor,
+                                        Vec3::zero(),
+                                        Vec3::zero(),
+                                        0.0,
+                                    ),
+                                );
+                            }
+                        } else if let Some(body) = self.bodies.iter().find(|b| b.id == *survivor) {
+                            // refresh snapshot from host if available
+                            if let Some(p) = self.gpdm_participants.get_mut(survivor) {
+                                p.active = true;
+                                p.position = body.pos;
+                                p.velocity = body.vel;
+                                p.mass = body.mass;
+                                p.removed_frame = None;
+                            }
+                        }
+
+                        // Ensure removed snapshot exists and mark it removed at this frame
+                        if !self.gpdm_participants.contains_key(removed) {
+                            if let Some(body) = self.bodies.iter().find(|b| b.id == *removed) {
+                                let mut p = crate::gpdm::participant::ParticipantState::from_body(
+                                    *removed, body.pos, body.vel, body.mass,
+                                );
+                                p.mark_removed(self.frame);
+                                self.gpdm_participants.insert(*removed, p);
+                            } else {
+                                let mut p = crate::gpdm::participant::ParticipantState::from_body(
+                                    *removed, Vec3::zero(), Vec3::zero(), 0.0,
+                                );
+                                p.mark_removed(self.frame);
+                                self.gpdm_participants.insert(*removed, p);
+                            }
+                        } else if let Some(p) = self.gpdm_participants.get_mut(removed) {
+                            p.mark_removed(self.frame);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Forward bootstrapped events into runtime
             for e in events {
                 self.gpdm.record_event(e);
             }
@@ -1545,7 +1660,45 @@ impl Simulation {
             // applied deterministically and safely by the host.
             let snapshot = self.gpdm_snapshot();
             let effects = self.gpdm.tick(snapshot.frame, snapshot.dt);
-            self.apply_gpdm_effects(effects);
+
+            // Validate mass_transfers and commit them atomically via FlowTransaction
+            // before attempting to move physical mass. In Phase-0 the host may
+            // bootstrap accounts from body.mass; this is controlled by config.
+            let mut sanitized = effects.clone();
+
+            // Build a single transaction representing all transfers requested
+            // this tick. Accounts are ensured to exist first (optionally
+            // bootstrapped from host body mass for Phase-0).
+            let mut tx = crate::gpdm::flow::FlowTransaction::new();
+            for mt in &sanitized.mass_transfers {
+                if mt.mass <= 0.0 || !mt.mass.is_finite() {
+                    continue;
+                }
+                let from_balance = if self.config.gpdm_bootstrap_accounts_from_body_mass {
+                    self.bodies.iter().find(|b| b.id == mt.from).map(|b| b.mass as f64).unwrap_or(0.0)
+                } else { 0.0 };
+                let to_balance = if self.config.gpdm_bootstrap_accounts_from_body_mass {
+                    self.bodies.iter().find(|b| b.id == mt.to).map(|b| b.mass as f64).unwrap_or(0.0)
+                } else { 0.0 };
+
+                crate::gpdm::accounts::ensure_account(&mut self.gpdm_accounts, mt.from, from_balance);
+                crate::gpdm::accounts::ensure_account(&mut self.gpdm_accounts, mt.to, to_balance);
+
+                tx.add_entry(mt.from, -(mt.mass as f64));
+                tx.add_entry(mt.to, mt.mass as f64);
+            }
+
+            // Attempt atomic commit. On failure, zero physical transfers so
+            // the host does not modify masses; ledger remains unchanged.
+            if let Err(err) = tx.commit(&mut self.gpdm_accounts) {
+                eprintln!("[GPDM] FlowTransaction commit failed: {}. Zeroing mass_transfers.", err);
+                for mt in sanitized.mass_transfers.iter_mut() {
+                    mt.mass = 0.0;
+                }
+            }
+
+            // Let the host apply sanitized effects (mass_transfers may be zeroed)
+            self.apply_gpdm_effects(sanitized);
         } else {
             // Keep buffer bounded when GPDM is disabled.
             self.gpdm_event_buffer.clear();
@@ -2469,6 +2622,9 @@ impl Simulation {
             };
             star.spin_angle = gas.spin_angle;
             let remaining_mass = gas.mass - star_mass;
+            // Record gas ignition event before mutating the bodies vector so the GPDM runtime
+            // observes the deterministic transition from gas -> stellar object.
+            self.record_gpdm_event(crate::gpdm::host::HostEvent::GasIgnited { id: star.id });
             if remaining_mass <= self.config.gas_ignition_mass {
                 self.bodies[idx] = star;
             } else {
@@ -2566,6 +2722,8 @@ impl Simulation {
             )
         };
         Self::initialize_adaptive_state(&mut body, self.config.effective_theta(), self.dt);
+        // Record spawn event before mutating the bodies vector.
+        self.record_gpdm_event(crate::gpdm::host::HostEvent::Spawned { id: body.id });
         self.bodies.push(body);
     }
 
@@ -2851,6 +3009,11 @@ impl Simulation {
         );
         Self::initialize_adaptive_state(&mut merged_body, self.config.effective_theta(), self.dt);
         merged_body.process_flash = 1.0;
+        // Record merge event before mutating the bodies vector so GPDM receives deterministic ordering.
+        self.record_gpdm_event(crate::gpdm::host::HostEvent::Merged {
+            survivor: b1.id,
+            removed: b2.id,
+        });
         self.bodies.remove(second);
         self.shift_pair_indices_after_removal(second);
         self.shift_contact_frames_after_removal(second);
@@ -2924,6 +3087,8 @@ impl Simulation {
                 };
                 spawn_gas.gas_temperature = 1.0;
                 spawn_gas.gas_smoothing_radius = self.gas_volume_half_size.max(1.0) * 0.06;
+                // Record spawn event before mutating the bodies vector.
+                self.record_gpdm_event(crate::gpdm::host::HostEvent::Spawned { id: spawn_gas.id });
                 self.bodies.push(spawn_gas);
             }
         }
@@ -4465,5 +4630,153 @@ mod tests {
         }
         assert!(sim.frame > 0);
         assert!(!sim.bodies.is_empty());
+    }
+
+    #[test]
+    fn gpdm_event_tick_apply_roundtrip() {
+        // This test uses the Phase-0 GPDM test escape hatch to return a deterministic
+        // HostEffects payload on the next tick and verifies the host applies the
+        // effects (mass transfer) safely.
+        let mut config = InformationsConfig::default();
+        config.enable_gpdm = true;
+        config.gpdm_tick_interval = 1;
+
+        let mut sim = Simulation::new(&config);
+        // Isolate test state to two simple bodies so effects are easy to assert.
+        sim.bodies.clear();
+        let b1 = Body::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            10.0,
+            1.0,
+            0.0,
+            Vec3::new(0.0, 0.0, 1.0),
+            ParticleSegmentType::Orbital,
+        );
+        let b2 = Body::new(
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::zero(),
+            1.0,
+            1.0,
+            0.0,
+            Vec3::new(0.0, 0.0, 1.0),
+            ParticleSegmentType::Orbital,
+        );
+        sim.bodies.push(b1);
+        sim.bodies.push(b2);
+
+        let id_from = sim.bodies[0].id;
+        let id_to = sim.bodies[1].id;
+
+        let mut effects = crate::gpdm::host::HostEffects::default();
+        effects.mass_transfers.push(crate::gpdm::host::MassTransfer { from: id_from, to: id_to, mass: 2.5 });
+
+        // Install a test runtime that will return `effects` on the next tick
+        sim.gpdm = crate::gpdm::GpdmRuntime::test_with_effects(effects);
+
+        // Run a single step which should tick GPDM and apply effects
+        sim.step();
+
+        let from_after = sim.bodies.iter().find(|b| b.id == id_from).unwrap().mass;
+        let to_after = sim.bodies.iter().find(|b| b.id == id_to).unwrap().mass;
+
+        assert!((from_after - 7.5).abs() < 1e-6, "from mass should be decreased by transfer");
+        assert!((to_after - 3.5).abs() < 1e-6, "to mass should be increased by transfer");
+    }
+
+    #[test]
+    fn gpdm_insert_body_records_spawned_event() {
+        let mut sim = Simulation::new(&InformationsConfig::default());
+        sim.bodies.clear();
+        sim.gpdm_event_buffer.clear();
+
+        let body = Body::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            1.0,
+            1.0,
+            0.0,
+            Vec3::new(0.0, 0.0, 1.0),
+            ParticleSegmentType::Orbital,
+        );
+        let id = body.id;
+        sim.insert_body_at(0, body);
+
+        let has_spawned = sim
+            .gpdm_event_buffer
+            .iter()
+            .any(|ev| matches!(ev, crate::gpdm::host::HostEvent::Spawned { id: ev_id } if *ev_id == id));
+        assert!(has_spawned, "insert_body_at should record a Spawned HostEvent");
+    }
+
+    #[test]
+    fn gpdm_ingest_spawn_queue_records_spawned_event() {
+        let mut sim = Simulation::new(&InformationsConfig::default());
+        sim.bodies.clear();
+        sim.gpdm_event_buffer.clear();
+
+        let body = Body::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::zero(),
+            1.0,
+            1.0,
+            0.0,
+            Vec3::new(0.0, 0.0, 1.0),
+            ParticleSegmentType::Orbital,
+        );
+        let id = body.id;
+        {
+            let mut q = renderer::SPAWN_QUEUE.lock();
+            q.push(body);
+        }
+
+        sim.ingest_spawn_queue();
+
+        let has_spawned = sim
+            .gpdm_event_buffer
+            .iter()
+            .any(|ev| matches!(ev, crate::gpdm::host::HostEvent::Spawned { id: ev_id } if *ev_id == id));
+        assert!(has_spawned, "ingest_spawn_queue should record a Spawned HostEvent");
+    }
+
+    #[test]
+    fn gpdm_spawn_reactivates_removed_participant() {
+        let mut config = InformationsConfig::default();
+        config.enable_gpdm = true;
+        config.gpdm_tick_interval = 1;
+
+        let mut sim = Simulation::new(&config);
+        sim.bodies.clear();
+        sim.gpdm_participants.clear();
+
+        let body_pos = Vec3::new(0.0, 0.0, 0.0);
+        let body_mass = 2.0f32;
+        let body = Body::new(
+            body_pos,
+            Vec3::zero(),
+            body_mass,
+            1.0,
+            0.0,
+            Vec3::new(0.0, 0.0, 1.0),
+            ParticleSegmentType::Orbital,
+        );
+        let id = body.id;
+
+        let mut p = crate::gpdm::participant::ParticipantState::from_body(id, Vec3::zero(), Vec3::zero(), 0.0);
+        p.mark_removed(sim.frame);
+        sim.gpdm_participants.insert(id, p);
+
+        // Insert body (records Spawned event) and enable a test runtime so step processes events
+        sim.insert_body_at(0, body);
+        sim.gpdm = crate::gpdm::GpdmRuntime::test_with_effects(crate::gpdm::host::HostEffects::default());
+
+        // Run a step to process events
+        sim.step();
+
+        let p_after = sim.gpdm_participants.get(&id).expect("participant missing after spawn");
+        assert!(p_after.active, "participant should be re-activated on spawn");
+        assert!(p_after.removed_frame.is_none(), "removed_frame should be cleared on reactivation");
+        assert!((p_after.position - body_pos).mag_sq() < 1e-6, "participant snapshot position should be refreshed from host body");
+        assert!((p_after.mass - body_mass).abs() < 1e-6, "participant snapshot mass should be refreshed from host body");
     }
 }
