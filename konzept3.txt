@@ -1,0 +1,217 @@
+Damit sich Dichtewellen, Spiralarme, Fly‑by‑Wakes und diskoseismische Moden in deiner Octree/AABB‑Galaxiensimulation erhalten und nicht künstlich absterben, brauchst du ein extrem gut balanciertes, quasi‑collisionless Anfangsmodell plus numerisch saubere Kraftberechnung.
+Der Schlüssel ist: Toomre‑Q richtig setzen, vertikale Struktur korrekt, Softening passend, Geschwindigkeitsdispersionsprofil realistisch, und keine numerische Überdämpfung durch Baum‑Parameter.
+
+Ich gehe jetzt Schritt für Schritt durch, was du konkret tun musst, damit deine Scheibe so fein im Gleichgewicht ist, dass Fly‑by‑Wellen sich realistisch ausbreiten und nur langsam abflachen.
+
+🎯 1. Das eigentliche Problem: Deine Scheibe ist nicht im echten Gleichgewicht
+Wenn die Scheibe nicht exakt Jeans‑stabilisiert ist, passiert Folgendes:
+
+Wellen sterben ab, weil die Scheibe numerisch „heißer“ wird → numerische Aufheizung
+
+Spiralarme brechen auseinander → zu hohe Dispersionszunahme
+
+Fly‑by‑Wakes verschwinden zu schnell → Softening zu groß oder zu klein
+
+Die Scheibe driftet, puffert oder „atmet“ → vertikale Struktur nicht stabil
+
+Du brauchst also ein disk equilibrium model, wie es professionelle Codes verwenden (GalactICS, AGAMA, MAGI, GALMOD, Exponential‑Disk‑DFs).
+
+🎯 2. Die 6 entscheidenden Stellschrauben für eine stabile Scheibe
+1. Toomre‑Q(R) richtig setzen (Q ≈ 1.2–1.5)
+Wenn Q zu hoch ist → Scheibe zu heiß → Wellen sterben ab.
+Wenn Q zu niedrig ist → Scheibe instabil → Spiralarme explodieren.
+
+Setze Q(R) so:
+
+𝑄
+(
+𝑅
+)
+=
+𝜎
+𝑅
+𝜅
+3.36
+𝐺
+Σ
+(
+𝑅
+)
+Du brauchst ein radiales Dispersionsprofil σ_R(R), das Q konstant hält.
+
+2. Vertikale Struktur realistisch modellieren (sech²‑Profil)
+Nutze:
+
+𝜌
+(
+𝑅
+,
+𝑧
+)
+=
+𝜌
+0
+(
+𝑅
+)
+ 
+s
+e
+c
+h
+2
+(
+𝑧
+𝑧
+0
+(
+𝑅
+)
+)
+Wenn du stattdessen ein einfaches Gauß‑Profil oder uniformes z‑Sampling nutzt → die Scheibe „atmet“ → Wellen sterben.
+
+3. Azimutalgeschwindigkeit vφ(R) aus dem echten Potential
+Viele machen den Fehler:
+
+vφ = v_circ
+
+Das ist falsch für eine Scheibe mit endlicher Dicke und Dispersionsdruck.
+
+Du brauchst:
+
+𝑣
+𝜙
+2
+=
+𝑣
+𝑐
+2
++
+𝜎
+𝑅
+2
+(
+∂
+ln
+⁡
+Σ
+∂
+ln
+⁡
+𝑅
++
+∂
+ln
+⁡
+𝜎
+𝑅
+2
+∂
+ln
+⁡
+𝑅
++
+1
+)
+Das ist der asymmetric drift correction.
+
+Wenn du den nicht einbaust → die Scheibe driftet → Wellen sterben.
+
+4. Softening ε richtig wählen (kritisch!)
+Für eine Scheibe gilt:
+
+Zu kleines ε → Zweikörperrauschen → Scheibe heizt → Wellen sterben
+
+Zu großes ε → Kräfte zu weich → Wellen sterben
+
+Optimal:
+
+𝜖
+≈
+0.5
+×
+mittlerer Partikelabstand im Zentrum
+Typisch:
+
+ε ≈ 0.01–0.05 × Diskradius
+
+oder ε ≈ 50–150 pc für eine MW‑ähnliche Scheibe
+
+5. Barnes–Hut θ nicht zu aggressiv
+Wenn θ zu groß ist → Kräfte werden ungenau → Wellen sterben.
+
+Empfehlung für Scheiben:
+
+θ = 0.5 (sehr gut)
+
+θ = 0.7 (noch ok)
+
+θ > 0.8 → Wellen sterben schnell
+
+6. Halo als analytisches Potential statt Partikel
+Wenn dein Halo aus Partikeln besteht:
+
+shot noise → Disk heating → Wellen sterben
+
+Besser:
+
+Analytisches NFW‑Potential
+
+oder Multipol‑Expansion
+
+Damit bleibt die Scheibe viel ruhiger.
+
+🎯 3. Die 3 wichtigsten Tests, ob deine Scheibe im Gleichgewicht ist
+Test A: Rotation curve + asymmetric drift
+Plotte:
+
+v_circ(R)
+
+vφ(R)
+
+σ_R(R)
+
+Wenn vφ nicht stabil bleibt → Scheibe nicht im Gleichgewicht.
+
+Test B: Vertical breathing mode
+Simuliere 1–2 Gyr ohne Fly‑by.
+
+Wenn die Scheibe „atmet“ (z‑Ausdehnung oszilliert) → z‑Verteilung falsch.
+
+Test C: Dichtewellen-Lebensdauer
+Erzeuge eine kleine Störung (z.B. 1% Massenklumpen).
+
+Wenn die Welle nach 1–2 Rotationen tot ist → Scheibe zu heiß oder Softening falsch.
+
+🎯 4. Konkrete Parameter, die für deinen Rechner funktionieren (i5, 8GB, UHD 620)
+Partikelzahlen
+Disk: 50k–150k
+
+Halo: analytisch (spart massiv Rechenzeit)
+
+Softening
+ε = 0.02 × Diskradius
+
+Baumparameter
+θ = 0.6
+
+rebuild tree every 5 steps
+
+Zeitschritt
+Δt = 0.005 × Rotationsperiode im Zentrum
+
+wir brauchen:
+
+Initialisierungs‑Modell für deine Galaxienscheibe bauen:
+
+Exponentielle Dichte
+
+sech²‑Vertikalprofil
+
+korrektes σ_R(R) für Q=1.3
+
+korrektes σ_z(R)
+
+korrekter asymmetric drift
+
+vollständige Sampling‑Formeln
