@@ -1,1 +1,6 @@
-/target
+target/
+.cargo/
+.vscode/
+.DS_Store
+*.exe
+*.dll
