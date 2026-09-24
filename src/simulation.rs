@@ -88,6 +88,12 @@ impl Simulation {
         Vec3::new(x, y, z).normalized()
     }
 
+    pub(crate) fn record_body_state_change<I>(&mut self, _operation: &'static str, _ids: I)
+    where I: IntoIterator<Item = u64> {
+        // No-op shim for instrumentation audit. Real GPDM integration will
+        // replace this with event buffering and HostEvent construction.
+    }
+
     fn galaxy_bulk_velocities(
         config: &InformationsConfig,
         m1: f32,
@@ -435,14 +441,17 @@ impl Simulation {
         let angular_speed = (self.config.spawn_angular_speed_base 
             + fastrand::f32() * self.config.spawn_angular_speed_range 
             + orbital_speed * 0.02) * self.config.spin_speed_multiplier;
-        self.bodies.push(Body::new(
+        let new_id = self.bodies.len() as u64;
+        let new_body = Body::new(
             spawn_pos,
             vel,
             mass,
             radius,
             angular_speed,
             Vec3::new(0.0, 0.0, 1.0),
-        ));
+        );
+        self.record_body_state_change("spawn_accretion", [new_id]);
+        self.bodies.push(new_body);
     }
 
     fn resolve(&mut self, i: usize, j: usize, center_merge_pair: &mut Option<(usize, usize)>) {
@@ -539,7 +548,11 @@ impl Simulation {
 
         let merged_radius = (b1.base_radius.powi(3) + b2.base_radius.powi(3)).cbrt();
         let merged_angular_speed = (b1.angular_speed.abs() * b1.mass + b2.angular_speed.abs() * b2.mass) / total_mass;
+        let replace_id = first as u64;
+        let remove_id = second as u64;
+        self.record_body_state_change("merge_center_replace", [replace_id]);
         self.bodies[first] = Body::new(merged_pos, merged_vel, total_mass, merged_radius, merged_angular_speed, axis);
+        self.record_body_state_change("merge_center_remove", [remove_id]);
         self.bodies.remove(second);
 
         self.center1_idx = first;
