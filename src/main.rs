@@ -7,6 +7,7 @@ mod galaxy_templates;
 mod quadtree;
 mod renderer;
 mod simulation;
+mod gpdm;
 mod utils;
 
 use renderer::Renderer;

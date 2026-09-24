@@ -374,6 +374,31 @@ impl InformationsConfig {
                         _ => None,
                     };
 
+                    let known = matches!(key,
+                        "dt" | "n" | "theta" | "epsilon" | "accretion_spawn_rate" |
+                        "inner_radius" | "outer_radius" | "outer_ring_spawn_zone_inner_ratio" |
+                        "outer_ring_spawn_zone_outer_ratio" | "central_mass" | "particle_mass_range" |
+                        "inflow_strength" | "restore_strength" | "galaxy_separation_factor" |
+                        "galaxy_count" | "galaxy_volume_scatter_factor" | "prob_merge" |
+                        "prob_repeated" | "prob_flyby" | "merge_speed_factor" |
+                        "repeated_speed_factor" | "flyby_speed_factor" | "merge_angle" |
+                        "repeated_angle" | "flyby_angle" | "collision_interval" |
+                        "attract_interval" | "orbital_speed_multiplier" |
+                        "spawn_angular_speed_base" | "spawn_angular_speed_range" |
+                        "spin_speed_multiplier" | "equatorial_growth_factor" |
+                        "polar_flattening_factor" | "radius_scale" | "depth_scale_factor" |
+                        "spacetime_dilation_factor" | "adaptive_softening_enabled" |
+                        "sph_enabled" | "softening_scale_factor" | "softening_min_factor" |
+                        "softening_max_factor" | "hydro_pressure_strength" |
+                        "hydro_kernel_factor" | "render_update_interval" | "performance_mode" |
+                        "ultra_performance_mode"
+                    );
+
+                    if !known {
+                        // Unknown key in config: ignore to allow extra entries without spamming parse warnings.
+                        continue;
+                    }
+
                     if parse_result.is_none() {
                         eprintln!(
                             "⚠ Config Parse-Fehler Zeile {}: '{}' = '{}' (ungültiger Typ)",
